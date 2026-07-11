@@ -9,3 +9,12 @@ services:
       - ./generated:/app/generated    # numbered output files
       - ./documents.db:/app/documents.db  # SQLite database
     restart: unless-stopped
+    depends_on:
+      - gotenberg
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: essic_gotenberg
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

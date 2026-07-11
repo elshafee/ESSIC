@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}User Management — ESSIC{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Manage roles and access to the system{% endblock %}
+
+{% block content %}
+<div class="card-custom">
+  <div class="card-header-custom">
+    <div class="icon-wrap"><i class="bi bi-people"></i></div>
+    <div style="flex: 1;">
+      <h2>Registered Users</h2>
+      <p>All users that have logged into the system</p>
+    </div>
+    <button type="button" class="btn-primary-custom" data-bs-toggle="modal" data-bs-target="#addUserModal">
+      <i class="bi bi-person-plus"></i> Add User
+    </button>
+  </div>
+
+  {% if users %}
+  <div style="overflow-x:auto;">
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email Address</th>
+          <th>Role</th>
+          <th>Joined</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td style="font-weight:600;color:var(--brand-navy);">
+            {{ user.name }}
+          </td>
+          <td style="font-size:13px;color:#6b7a8f;">
+            {{ user.email }}
+          </td>
+          <td>
+            {% if user.role == 'admin' %}
+              <span class="badge" style="background:#e8f1fb;color:#1a5fa8;">Admin</span>
+            {% else %}
+              <span class="badge" style="background:#f5e8fb;color:#7b2d8b;">User</span>
+            {% endif %}
+          </td>
+          <td style="font-size:13px;color:#6b7a8f;white-space:nowrap;">
+            {{ user.created_at.strftime('%d %b %Y') }}
+          </td>
+          <td style="text-align:right;">
+            <div style="display:flex;gap:6px;justify-content:flex-end;">
+              
+              <!-- Toggle Role -->
+              <form method="POST" action="{{ url_for('toggle_user_role', email=user.email) }}" style="display:inline;"
+                    onsubmit="return confirm('Change role for {{ user.email }}?');">
+                <button type="submit" class="action-btn" title="Toggle Role">
+                  {% if user.role == 'admin' %}
+                  <i class="bi bi-person-down" style="color:#c0392b;"></i>
+                  {% else %}
+                  <i class="bi bi-person-up" style="color:#1a7a4a;"></i>
+                  {% endif %}
+                </button>
+              </form>
+
+              <!-- Edit User -->
+              <button type="button" class="action-btn" style="color:#2e8de4;" title="Edit User" data-bs-toggle="modal" data-bs-target="#editUserModal-{{ user.email | replace('@', '-') | replace('.', '-') }}">
+                <i class="bi bi-pencil"></i>
+              </button>
+
+              <!-- Delete -->
+              <form method="POST" action="{{ url_for('delete_user', email=user.email) }}" style="display:inline;"
+                    onsubmit="return confirm('Are you sure you want to permanently delete {{ user.email }}?');">
+                <button type="submit" class="action-btn danger" title="Delete User">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-people"></i>
+    <h3>No users found</h3>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add New User</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('add_user') }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Full Name</label>
+            <input type="text" class="form-control" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-control" name="email" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Role</label>
+            <select class="form-select" name="role">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:var(--brand-blue);border:none;">Add User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% for user in users %}
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal-{{ user.email | replace('@', '-') | replace('.', '-') }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit User: {{ user.email }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('edit_user', email=user.email) }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Full Name</label>
+            <input type="text" class="form-control" name="name" value="{{ user.name }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Role</label>
+            <select class="form-select" name="role">
+              <option value="user" {% if user.role == 'user' %}selected{% endif %}>User</option>
+              <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+            </select>
+          </div>
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="reset_otp" id="resetOtp-{{ loop.index }}">
+            <label class="form-check-label text-danger" for="resetOtp-{{ loop.index }}">
+              Reset Authenticator (OTP) <br>
+              <small class="text-muted">User will need to scan a new QR code on their next login.</small>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:var(--brand-blue);border:none;">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

@@ -10,7 +10,7 @@
   <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
 
   <style>
     :root {
@@ -445,6 +445,50 @@
       font-size: 20px;
     }
 
+    /* ── AI Wizard Styles ── */
+    .steps-bar { display: flex; align-items: center; gap: 0; margin-bottom: 28px; direction: rtl; }
+    .step-item { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .step-circle {
+      width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--brand-border);
+      background: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: var(--brand-muted); flex-shrink: 0; transition: all .2s;
+    }
+    .step-circle.active { background: var(--brand-blue); border-color: var(--brand-blue); color: #fff; }
+    .step-circle.done   { background: #1a7a4a; border-color: #1a7a4a; color: #fff; }
+    .step-label { font-size: 12px; font-weight: 600; color: var(--brand-muted); }
+    .step-label.active { color: var(--brand-blue); }
+    .step-label.done   { color: #1a7a4a; }
+    .step-line { height: 2px; flex: 1; background: var(--brand-border); margin: 0 6px; }
+    .step-line.done { background: #1a7a4a; }
+
+    .btn-ghost {
+      background: transparent; color: var(--brand-muted);
+      border: 1px solid var(--brand-border); border-radius: var(--radius-md);
+      padding: 10px 22px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all .18s;
+      display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    }
+    .btn-ghost:hover { background: var(--brand-light); color: var(--brand-navy); }
+
+    .arabic-preview {
+      background: #fffdf5; border: 1px solid #e8d9b0; border-radius: var(--radius-md);
+      padding: 20px 24px; font-size: 15px; line-height: 2;
+      direction: rtl; text-align: right; color: var(--brand-navy);
+      white-space: pre-wrap;
+    }
+
+    #ai-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(11,31,58,.55);
+      z-index: 9999; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    }
+    #ai-overlay.show { display: flex; }
+    #ai-overlay .spinner-ring {
+      width: 60px; height: 60px; border: 4px solid rgba(255,255,255,.2);
+      border-top-color: #c9973a; border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    #ai-overlay p { color: #fff; font-size: 16px; font-weight: 600; margin: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .sidebar { display: none; }
@@ -454,6 +498,12 @@
   </style>
 </head>
 <body>
+
+<!-- AI Loading Overlay -->
+<div id="ai-overlay">
+  <div class="spinner-ring"></div>
+  <p>يقوم الذكاء الاصطناعي بصياغة المستند...</p>
+</div>
 
 <!-- Sidebar -->
 <aside class="sidebar">
@@ -467,9 +517,20 @@
     <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">
       <i class="bi bi-cloud-upload"></i> Upload Document
     </a>
+    <a href="{{ url_for('ai_step1') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('ai_') else '' }}">
+      <i class="bi bi-robot"></i> AI Content Generator
+    </a>
     <a href="{{ url_for('documents') }}" class="{{ 'active' if request.endpoint == 'documents' else '' }}">
       <i class="bi bi-table"></i> ESSIC Document Manager
     </a>
+    <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint == 'settings_page' else '' }}">
+      <i class="bi bi-gear"></i> AI Provider Settings
+    </a>
+    {% if is_admin %}
+    <a href="{{ url_for('users') }}" class="{{ 'active' if request.endpoint == 'users' else '' }}">
+      <i class="bi bi-people"></i> User Management
+    </a>
+    {% endif %}
   </nav>
   <div class="sidebar-footer">
     Version 1.0 &nbsp;·&nbsp; ESSIC Office &copy; A.Elshafee
@@ -483,9 +544,20 @@
       <p class="topbar-title">{% block page_title %}Document Numbering{% endblock %}</p>
       <p class="topbar-subtitle">{% block page_subtitle %}ESSIC Office Coding System{% endblock %}</p>
     </div>
-    <a href="{{ url_for('documents') }}" class="btn-primary-custom" style="font-size:13px;padding:8px 18px;">
-      <i class="bi bi-table"></i> View History
-    </a>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      {% if session.get('user') %}
+        <div style="text-align: right; line-height: 1.2;">
+          <div style="font-size: 13px; font-weight: 600; color: var(--brand-navy);">{{ session.user.name }}</div>
+          <div style="font-size: 11px; color: var(--brand-muted);">{{ session.user.email }}</div>
+        </div>
+        <a href="{{ url_for('logout') }}" class="btn-primary-custom" style="font-size:13px;padding:8px 18px; background: #c0392b;">
+          <i class="bi bi-box-arrow-right"></i> Logout
+        </a>
+      {% endif %}
+      <a href="{{ url_for('documents') }}" class="btn-primary-custom" style="font-size:13px;padding:8px 18px;">
+        <i class="bi bi-table"></i> View History
+      </a>
+    </div>
   </div>
 
   <div class="content-area">

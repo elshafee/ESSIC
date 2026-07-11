@@ -49,49 +49,178 @@
   </div>
 </div>
 
-<!-- Upload Card -->
-<div class="card-custom">
-  <div class="card-header-custom">
-    <div class="icon-wrap"><i class="bi bi-file-earmark-word"></i></div>
-    <div>
-      <h2>Generate Document Number</h2>
-      <p>Upload your Word template — the system will insert the code automatically</p>
+<!-- Tabs Navigation -->
+<ul class="nav nav-pills mb-4" id="uploadTabs" role="tablist" style="gap: 10px;">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active btn-primary-custom" id="direct-tab" data-bs-toggle="pill" data-bs-target="#direct-panel" type="button" role="tab" aria-controls="direct-panel" aria-selected="true" style="border-radius: var(--radius-md); background: #fff; color: var(--brand-navy); border: 1px solid var(--brand-border);">Fill Template Directly</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link btn-primary-custom" id="upload-tab" data-bs-toggle="pill" data-bs-target="#upload-panel" type="button" role="tab" aria-controls="upload-panel" aria-selected="false" style="border-radius: var(--radius-md); background: #fff; color: var(--brand-navy); border: 1px solid var(--brand-border);">Upload Document</button>
+  </li>
+</ul>
+<style>
+  .nav-pills .nav-link.active {
+    background: var(--brand-blue) !important;
+    color: #fff !important;
+    border-color: var(--brand-blue) !important;
+  }
+</style>
+
+<div class="tab-content" id="uploadTabsContent">
+  <!-- DIRECT ENTRY TAB -->
+  <div class="tab-pane fade show active" id="direct-panel" role="tabpanel" aria-labelledby="direct-tab">
+    <div class="card-custom">
+      <div class="card-header-custom">
+        <div class="icon-wrap"><i class="bi bi-pencil-square"></i></div>
+        <div>
+          <h2>Generate from Default Template</h2>
+          <p>Fill in the data and content directly without uploading a file</p>
+        </div>
+      </div>
+      <div class="card-body-custom">
+        <form method="POST" id="direct-form" style="direction: rtl; text-align: right;">
+          <input type="hidden" name="action_type" value="direct_template">
+          
+          <div class="form-group mb-3">
+            <label class="form-label" style="font-weight:600;color:#0f2744;">عنوان الملف (File Title)</label>
+            <input type="text" class="form-control" name="file_title" placeholder="اختياري (Optional)">
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label" style="font-weight:600;color:#0f2744;">المرسل إليه (Recipient / SEND_TO)</label>
+              <input type="text" class="form-control" name="recipient" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label" style="font-weight:600;color:#0f2744;">الموضوع (Subject)</label>
+              <input type="text" class="form-control" name="subject" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label" style="font-weight:600;color:#0f2744;">عناية السيد (Holder Name)</label>
+              <input type="text" class="form-control" name="holder_name" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label" style="font-weight:600;color:#0f2744;">الصفة (Position)</label>
+              <input type="text" class="form-control" name="position" required>
+            </div>
+            <div class="col-md-12 mb-3" id="sender-group">
+              <label class="form-label" style="font-weight:600;color:#0f2744;">المرسل (Sender / Signature)</label>
+              <input type="text" class="form-control" name="sender" id="sender-input" placeholder="اسم المرسل وتوقيعه">
+            </div>
+          </div>
+
+          <div class="form-check mb-2" style="text-align: right; padding-right: 0;">
+            <input class="form-check-input float-end ms-2" type="checkbox" name="is_internal" id="is_internal" value="1">
+            <label class="form-check-label" for="is_internal" style="font-weight:600;color:#0f2744; margin-right: 1.5rem;">
+              مراسلة داخلية (Internal Correspondence)
+            </label>
+          </div>
+
+          <div class="form-check mb-3" style="text-align: right; padding-right: 0; display: none;" id="manager-sender-group">
+            <input class="form-check-input float-end ms-2" type="checkbox" name="manager_is_sender" id="manager_is_sender" value="1">
+            <label class="form-check-label" for="manager_is_sender" style="font-weight:600;color:#0f2744; margin-right: 1.5rem;">
+              المدير هو المرسل (Manager is the sender - uses default template signature)
+            </label>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label class="form-label" style="font-weight:600;color:#0f2744;">نص المستند (Body Text)</label>
+            <textarea class="form-control" name="full_body" rows="6" required></textarea>
+          </div>
+
+          <div class="code-preview-box mt-4 mb-4" style="direction: ltr; text-align: left;">
+            <div>
+              <div class="label">Will be inserted as</div>
+              <div class="code">Code No <span>{{ preview_code }}</span></div>
+            </div>
+          </div>
+
+          <div class="mt-4 d-flex gap-3 align-items-center" style="direction: ltr;">
+            <button type="button" class="btn btn-secondary" id="direct-preview-btn" style="border-radius: var(--radius-md); padding: 10px 20px;">
+              <i class="bi bi-eye"></i> Preview Document
+            </button>
+            <button type="submit" class="btn-primary-custom" id="direct-submit-btn">
+              <i class="bi bi-lightning-charge-fill"></i> Generate PDF & Download
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
-  <div class="card-body-custom">
-    <form method="POST" enctype="multipart/form-data" id="upload-form">
 
-      <!-- Drop zone -->
-      <div class="upload-zone" id="drop-zone">
-        <input type="file" name="docx_file" id="docx_file" accept=".docx" required />
-        <div class="upload-icon">
-          <i class="bi bi-cloud-arrow-up"></i>
+  <!-- Preview Modal -->
+  <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="previewModalLabel">Document Preview</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <h3>Drop your Word document here</h3>
-        <p>or click to browse &nbsp;·&nbsp; <strong>.docx</strong> files only &nbsp;·&nbsp; max 20 MB</p>
+        <div class="modal-body p-0" id="previewContainer" style="height: calc(100vh - 120px); overflow: hidden;">
+          <!-- Will be injected via JS to ensure proper rendering across browsers -->
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn-primary-custom" id="confirm-save-btn">
+            <i class="bi bi-check-lg"></i> Confirm & Save
+          </button>
+        </div>
       </div>
+    </div>
+  </div>
 
-      <!-- File preview -->
-      <div class="file-preview" id="file-preview">
-        <i class="bi bi-file-earmark-word-fill"></i>
-        <span id="file-name-display">—</span>
-      </div>
-
-      <!-- Code preview -->
-      <div class="code-preview-box">
+  <!-- UPLOAD TAB -->
+  <div class="tab-pane fade" id="upload-panel" role="tabpanel" aria-labelledby="upload-tab">
+    <div class="card-custom">
+      <div class="card-header-custom">
+        <div class="icon-wrap"><i class="bi bi-file-earmark-word"></i></div>
         <div>
-          <div class="label">Will be inserted as</div>
-          <div class="code" id="code-preview">Code No <span id="code-value">{{ preview_code }}</span></div>
+          <h2>Generate Document Number</h2>
+          <p>Upload your Word template — the system will insert the code automatically</p>
         </div>
       </div>
+      <div class="card-body-custom">
+        <form method="POST" enctype="multipart/form-data" id="upload-form">
+          <input type="hidden" name="action_type" value="upload">
+          <!-- File Title -->
+          <div class="form-group mb-3" style="text-align: left;">
+            <label for="file_title" class="form-label" style="font-weight:600;color:#0f2744;">File Title (Optional)</label>
+            <input type="text" class="form-control" name="file_title" id="file_title" placeholder="Enter a title for this document" />
+          </div>
 
-      <div class="mt-4 d-flex gap-3 align-items-center">
-        <button type="submit" class="btn-primary-custom" id="submit-btn" disabled>
-          <i class="bi bi-lightning-charge-fill"></i> Generate Number & Download
-        </button>
-        <span style="font-size:13px;color:#6b7a8f;" id="hint-text">Select a file to continue</span>
+          <!-- Drop zone -->
+          <div class="upload-zone" id="drop-zone">
+            <input type="file" name="docx_file" id="docx_file" accept=".docx" required />
+            <div class="upload-icon">
+              <i class="bi bi-cloud-arrow-up"></i>
+            </div>
+            <h3>Drop your Word document here</h3>
+            <p>or click to browse &nbsp;·&nbsp; <strong>.docx</strong> files only &nbsp;·&nbsp; max 20 MB</p>
+          </div>
+
+          <!-- File preview -->
+          <div class="file-preview" id="file-preview">
+            <i class="bi bi-file-earmark-word-fill"></i>
+            <span id="file-name-display">—</span>
+          </div>
+
+          <!-- Code preview -->
+          <div class="code-preview-box">
+            <div>
+              <div class="label">Will be inserted as</div>
+              <div class="code" id="code-preview">Code No <span id="code-value">{{ preview_code }}</span></div>
+            </div>
+          </div>
+
+          <div class="mt-4 d-flex gap-3 align-items-center">
+            <button type="submit" class="btn-primary-custom" id="submit-btn" disabled>
+              <i class="bi bi-lightning-charge-fill"></i> Generate PDF & Download
+            </button>
+            <span style="font-size:13px;color:#6b7a8f;" id="hint-text">Select a file to continue</span>
+          </div>
+        </form>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 
@@ -178,5 +307,117 @@
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
     submitBtn.disabled = true;
   });
+
+  // ── Internal / Manager dynamic logic ──────────────────────────────────
+  const internalCheck = document.getElementById('is_internal');
+  const managerGroup = document.getElementById('manager-sender-group');
+  const managerCheck = document.getElementById('manager_is_sender');
+  const senderInput = document.getElementById('sender-input');
+  const defaultManagerSender = 'مدير مركز الخدمات الإلكترونية و الإبداع العلمي - ESSIC';
+  let previousSender = '';
+
+  // Initialize defaults on load
+  if (!internalCheck.checked) {
+    senderInput.value = defaultManagerSender;
+  }
+
+  if (internalCheck) {
+    internalCheck.addEventListener('change', () => {
+      if (internalCheck.checked) {
+        managerGroup.style.display = '';
+        previousSender = senderInput.value;
+        senderInput.value = '- ESSIC Staff';
+      } else {
+        managerGroup.style.display = 'none';
+        managerCheck.checked = false;
+        senderInput.disabled = false;
+        
+        // If they hadn't changed it from the staff default, revert to manager default
+        if (previousSender === defaultManagerSender || senderInput.value === '- ESSIC Staff') {
+             senderInput.value = defaultManagerSender;
+        } else {
+             senderInput.value = previousSender;
+        }
+      }
+    });
+  }
+
+  if (managerCheck) {
+    managerCheck.addEventListener('change', () => {
+      if (managerCheck.checked) {
+        // Manager is sender → disable sender field, template has manager signature
+        senderInput.disabled = true;
+        senderInput.value = '';
+        senderInput.placeholder = 'يستخدم توقيع المدير من القالب (Manager signature from template)';
+      } else {
+        // Employee is sender → enable sender field for their signature
+        senderInput.disabled = false;
+        senderInput.value = '- ESSIC Staff';
+        senderInput.placeholder = 'اسم المرسل وتوقيعه';
+      }
+    });
+  }
+
+  const directForm = document.getElementById('direct-form');
+  const previewBtn = document.getElementById('direct-preview-btn');
+  const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+  const confirmSaveBtn = document.getElementById('confirm-save-btn');
+  const previewFrame = document.getElementById('previewFrame');
+
+  if (previewBtn) {
+    previewBtn.addEventListener('click', async () => {
+      // Validate form first
+      if (!directForm.checkValidity()) {
+        directForm.reportValidity();
+        return;
+      }
+      
+      const originalHtml = previewBtn.innerHTML;
+      previewBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+      previewBtn.disabled = true;
+
+      try {
+        const formData = new FormData(directForm);
+        const response = await fetch('{{ url_for("preview_document") }}', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const container = document.getElementById('previewContainer');
+          // Using strict embed without fragments. Mac Safari fails on blob URLs with fragments.
+          container.innerHTML = `<embed src="${url}" type="application/pdf" width="100%" height="100%">`;
+          previewModal.show();
+        } else {
+          const data = await response.json();
+          alert('Preview failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error during preview generation.');
+        console.error(err);
+      } finally {
+        previewBtn.innerHTML = originalHtml;
+        previewBtn.disabled = false;
+      }
+    });
+  }
+
+  if (confirmSaveBtn) {
+    confirmSaveBtn.addEventListener('click', () => {
+      previewModal.hide();
+      directForm.submit();
+    });
+  }
+
+  if (directForm) {
+    directForm.addEventListener('submit', () => {
+      const directSubmitBtn = document.getElementById('direct-submit-btn');
+      directSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
+      directSubmitBtn.disabled = true;
+      if (previewBtn) previewBtn.disabled = true;
+    });
+  }
 </script>
 {% endblock %}

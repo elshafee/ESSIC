@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}الخطوة 2 — بيانات {{ 'الخطاب' if doc_type == 'letter' else 'الطلب' }}{% endblock %}
+{% block page_title %}إنشاء مستند بالذكاء الاصطناعي{% endblock %}
+{% block page_subtitle %}الخطوة 2 من 3 — إدخال البيانات والمسودة{% endblock %}
+
+{% block content %}
+<div style="direction: rtl; font-family: 'Cairo', sans-serif;">
+
+<!-- Premium Steps Bar -->
+<div class="ai-steps-bar mb-5">
+  <div class="ai-step done">
+    <div class="step-icon"><i class="bi bi-check-lg"></i></div>
+    <span class="step-text">نوع المستند</span>
+  </div>
+  <div class="step-divider done"></div>
+  <div class="ai-step active">
+    <div class="step-icon"><i class="bi bi-pencil-square"></i></div>
+    <span class="step-text">بيانات المسودة</span>
+  </div>
+  <div class="step-divider"></div>
+  <div class="ai-step">
+    <div class="step-icon">3</div>
+    <span class="step-text">المراجعة والاعتماد</span>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="premium-form-card">
+      <div class="form-header">
+        <h4>بيانات {{ 'الخطاب' if doc_type == 'letter' else 'الطلب' }} الأساسية</h4>
+        <p>يرجى إدخال البيانات الرئيسية وسيقوم الذكاء الاصطناعي بصياغتها بأسلوب رسمي.</p>
+      </div>
+
+      <form action="{{ url_for('ai_generate') }}" method="post" id="aiForm">
+        <input type="hidden" name="doc_type" value="{{ doc_type }}">
+        
+        <div class="premium-input-group">
+          <label>المرسل (الجهة المُصدرة)</label>
+          <input type="text" class="premium-input" name="sender" required
+                 placeholder="مثال: مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)">
+        </div>
+
+        <div class="premium-input-group">
+          <label>المرسل إليه (الجهة/القسم)</label>
+          <input type="text" class="premium-input" name="recipient" required
+                 placeholder="مثال: مكتب رئيس جامعة حورس">
+          <span class="input-hint"><i class="bi bi-info-circle"></i> تُدرج في خانة <code>{{"{{TO_SEND}}"}}</code></span>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-7 premium-input-group">
+            <label>اسم ولقب المرسل إليه (للعناية)</label>
+            <input type="text" class="premium-input" name="holder_name" required
+                   placeholder="مثال: السيد الأستاذ الدكتور / محمد عبدالعال – الموقر">
+          </div>
+          <div class="col-md-5 premium-input-group">
+            <label>المنصب</label>
+            <input type="text" class="premium-input" name="position" required
+                   placeholder="مثال: نائب رئيس جامعة حورس">
+          </div>
+        </div>
+
+        <div class="premium-input-group mt-3">
+          <label>موضوع {{ 'الخطاب' if doc_type == 'letter' else 'الطلب' }}</label>
+          <input type="text" class="premium-input" name="subject" required
+                 placeholder="مثال: طلب الموافقة على إنشاء النطاق الإلكتروني">
+        </div>
+
+        <div class="premium-input-group">
+          <label>المسودة أو الفكرة الرئيسية <span class="badge bg-light text-primary border ms-2">للذكاء الاصطناعي</span></label>
+          <textarea class="premium-input" name="raw_draft" required
+                    placeholder="اكتب فكرتك هنا ببساطة (حتى بالعامية) وسيقوم الذكاء الاصطناعي بتحويلها لأسلوب إداري رصين..."></textarea>
+        </div>
+
+        <div class="premium-input-group">
+          <label>نموذج الذكاء الاصطناعي</label>
+          <select name="model" class="premium-input custom-select">
+            {% for m in models %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-actions mt-4">
+          <a href="{{ url_for('ai_step1') }}" class="btn-ghost-premium">
+             العودة <i class="bi bi-arrow-right ms-2"></i>
+          </a>
+          <button type="submit" class="btn-gradient-submit" id="submitBtn">
+            صياغة بالذكاء الاصطناعي <i class="bi bi-magic ms-2"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<style>
+  /* Same steps bar style as step 1 */
+  .ai-steps-bar {
+    display: flex; align-items: center; justify-content: center; max-width: 700px; margin: 0 auto;
+    background: #fff; padding: 16px 24px; border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(15,39,68,.04); border: 1px solid var(--brand-border);
+  }
+  .ai-step { display: flex; align-items: center; gap: 12px; opacity: 0.5; transition: all .3s; }
+  .ai-step.active, .ai-step.done { opacity: 1; }
+  .step-icon {
+    width: 38px; height: 38px; border-radius: 12px; background: #f0f4fa; color: var(--brand-navy);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;
+    border: 1px solid var(--brand-border);
+  }
+  .ai-step.active .step-icon {
+    background: linear-gradient(135deg, var(--brand-blue), var(--brand-accent));
+    color: #fff; border: none; box-shadow: 0 4px 12px rgba(26,95,168,.3);
+  }
+  .ai-step.done .step-icon {
+    background: #e8f8f1; color: #1a7a4a; border-color: #a8dfc0;
+  }
+  .step-text { font-size: 14px; font-weight: 700; color: var(--brand-navy); }
+  .ai-step.done .step-text { color: #1a7a4a; }
+  .step-divider { flex: 1; height: 2px; background: var(--brand-border); margin: 0 16px; opacity: 0.5; }
+  .step-divider.done { background: #1a7a4a; opacity: 0.3; }
+
+  /* Premium Form */
+  .premium-form-card {
+    background: #fff; border-radius: 24px; padding: 40px;
+    box-shadow: 0 10px 40px rgba(15,39,68,.05); border: 1px solid rgba(208,218,232,0.6);
+  }
+  .form-header { margin-bottom: 32px; border-bottom: 1px solid #f0f4fa; padding-bottom: 20px; }
+  .form-header h4 { font-weight: 800; color: var(--brand-navy); font-size: 22px; margin-bottom: 8px; }
+  .form-header p { color: var(--brand-muted); font-size: 14px; margin: 0; }
+
+  .premium-input-group { margin-bottom: 24px; text-align: right; }
+  .premium-input-group label {
+    display: block; font-weight: 700; color: var(--brand-navy); font-size: 14px; margin-bottom: 8px;
+  }
+  .premium-input {
+    width: 100%; padding: 14px 18px; border-radius: 12px; border: 2px solid #eef2f7;
+    background: #fafcff; font-size: 14px; color: var(--brand-dark); transition: all 0.3s;
+    font-family: inherit;
+  }
+  .premium-input:focus {
+    outline: none; border-color: var(--brand-accent); background: #fff;
+    box-shadow: 0 0 0 4px rgba(46,141,228,0.1);
+  }
+  textarea.premium-input { min-height: 140px; resize: vertical; line-height: 1.6; }
+  select.premium-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7a8f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: left 16px center; background-size: 16px; padding-left: 40px; }
+  
+  .input-hint { display: inline-block; font-size: 12px; color: var(--brand-muted); margin-top: 6px; }
+  .input-hint code { background: #f0f4fa; padding: 2px 6px; border-radius: 4px; color: var(--brand-navy); }
+
+  .form-actions { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f0f4fa; padding-top: 24px; }
+  
+  .btn-gradient-submit {
+    background: linear-gradient(135deg, var(--brand-blue), var(--brand-accent));
+    color: #fff; border: none; padding: 14px 32px; border-radius: 14px;
+    font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.3s;
+    display: inline-flex; align-items: center;
+  }
+  .btn-gradient-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,95,168,.3); }
+  .btn-gradient-submit:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+  
+  .btn-ghost-premium {
+    color: var(--brand-muted); background: transparent; border: 2px solid var(--brand-border);
+    padding: 12px 24px; border-radius: 14px; font-size: 14px; font-weight: 700; text-decoration: none;
+    transition: all 0.3s;
+  }
+  .btn-ghost-premium:hover { background: #f0f4fa; color: var(--brand-navy); border-color: #d0dae8; }
+</style>
+
+<script>
+  document.getElementById('aiForm').addEventListener('submit', function() {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = 'جاري التفكير والصياغة... <span class="spinner-border spinner-border-sm ms-2"></span>';
+    
+    // Show AI Overlay if it exists in base.html
+    const overlay = document.getElementById('ai-overlay');
+    if(overlay) overlay.classList.add('show');
+  });
+</script>
+{% endblock %}

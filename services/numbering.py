@@ -7,15 +7,15 @@ Numbers reset every month/year combination.
 Format: 0031 ESSIC 05-2026
 """
 
+import re
 from models import db, Document
 
-
 OFFICE_CODE = "ESSIC"
-
 
 def get_next_serial(month: int, year: int) -> int:
     """
     Returns the next sequential serial number for the given month/year.
+    Queries the database to find the highest number for that period.
     Resets to 1 when a new month or year begins.
     """
     last = (
