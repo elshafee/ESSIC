@@ -7,8 +7,12 @@ import os
 import requests
 import urllib.parse
 
+LAST_ERROR = ""
+
 def get_sharepoint_config():
-    share_url = os.environ.get("ONEDRIVE_SHARE_URL")
+    share_url = os.environ.get("ONEDRIVE_SHARE_URL", "").strip('"\'')
+    if not share_url:
+        share_url = None
     # Using the hardcoded URLs provided in the upload/download scripts
     base_url = "https://horusuni-my.sharepoint.com"
     site_url = f"{base_url}/personal/aelshafee_horus_edu_eg"
@@ -20,10 +24,13 @@ def upload_file_to_share(local_filepath: str, dest_filename: str) -> bool:
     Uploads a local file to the shared OneDrive folder using Guest Cookies.
     Returns True on success, False on failure.
     """
+    global LAST_ERROR
+    LAST_ERROR = ""
     share_url, base_url, site_url, folder_path = get_sharepoint_config()
     
     if not share_url:
-        print("[Upload Error] ONEDRIVE_SHARE_URL not configured.")
+        LAST_ERROR = "ONEDRIVE_SHARE_URL not configured."
+        print(f"[Upload Error] {LAST_ERROR}")
         return False
         
     session = requests.Session()
@@ -44,8 +51,8 @@ def upload_file_to_share(local_filepath: str, dest_filename: str) -> bool:
         }
         ctx_response = session.post(context_info_url, headers=ctx_headers)
         if ctx_response.status_code != 200:
-            print("[Upload Error] Failed to get authorization token.")
-            print(ctx_response.text)
+            LAST_ERROR = f"Failed to get authorization token: {ctx_response.text}"
+            print(f"[Upload Error] {LAST_ERROR}")
             return False
 
         request_digest = ctx_response.json()['d']['GetContextWebInformation']['FormDigestValue']
@@ -72,12 +79,13 @@ def upload_file_to_share(local_filepath: str, dest_filename: str) -> bool:
         if upload_response.status_code in [200, 201, 202]:
             return True
         else:
-            print(f"[Upload Error] {upload_response.status_code}")
-            print(upload_response.text)
+            LAST_ERROR = f"Status {upload_response.status_code}: {upload_response.text}"
+            print(f"[Upload Error] {LAST_ERROR}")
             return False
             
     except Exception as e:
-        print(f"[Upload Exception] {e}")
+        LAST_ERROR = str(e)
+        print(f"[Upload Exception] {LAST_ERROR}")
         return False
 
 

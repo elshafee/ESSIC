@@ -3,9 +3,10 @@ import subprocess
 import shutil
 import requests
 
-GOTENBERG_URL = os.environ.get("GOTENBERG_URL", "http://localhost:3000")
+GOTENBERG_URL = os.environ.get("GOTENBERG_URL", "").rstrip("/")
 
-# Common LibreOffice paths on macOS / Linux
+# Common LibreOffice paths on macOS / Linux — only relevant for local dev,
+# never present on Vercel's serverless runtime.
 SOFFICE_PATHS = [
     "/Applications/LibreOffice.app/Contents/MacOS/soffice",
     "/usr/bin/soffice",
@@ -13,31 +14,39 @@ SOFFICE_PATHS = [
     shutil.which("soffice") or "",
 ]
 
+# Detect whether we're running as a Vercel serverless function.
+IS_SERVERLESS = bool(os.environ.get("VERCEL"))
+
 
 def convert_docx_to_pdf(docx_path, pdf_path):
     """
     Converts a DOCX file to PDF.
 
-    Tries three methods in order:
-      1. Gotenberg API  (Docker-based, if running)
-      2. LibreOffice     (headless CLI — best Arabic/RTL support)
-      3. docx2pdf        (macOS Word wrapper, if Word is installed)
+    On Vercel (serverless): only Gotenberg can work — there is no writable
+    filesystem for a LibreOffice install and no Word/COM available for
+    docx2pdf. GOTENBERG_URL must point to a reachable, hosted Gotenberg
+    instance (e.g. deployed via Railway/Render/Fly.io).
+
+    Locally (dev machine): falls back to a local LibreOffice install if
+    Gotenberg isn't configured, since that's often already installed.
 
     Returns True if successful, False otherwise.
     """
     if not os.path.exists(docx_path):
+        print(f"DOCX not found at {docx_path}")
         return False
 
-    # ── Method 1: Gotenberg ──────────────────────────────────────────────
-    if _try_gotenberg(docx_path, pdf_path):
+    if not GOTENBERG_URL:
+        print(
+            "GOTENBERG_URL is not set. Set it to a hosted Gotenberg instance "
+            "(e.g. https://your-gotenberg.up.railway.app) via Vercel env vars."
+        )
+    elif _try_gotenberg(docx_path, pdf_path):
         return True
 
-    # ── Method 2: LibreOffice headless ───────────────────────────────────
-    if _try_libreoffice(docx_path, pdf_path):
-        return True
-
-    # ── Method 3: docx2pdf (needs MS Word installed) ─────────────────────
-    if _try_docx2pdf(docx_path, pdf_path):
+    # Local-dev-only fallback. On Vercel this always fails fast since no
+    # soffice binary exists in the serverless filesystem.
+    if not IS_SERVERLESS and _try_libreoffice(docx_path, pdf_path):
         return True
 
     print("All PDF conversion methods failed.")
@@ -59,8 +68,8 @@ def _try_gotenberg(docx_path, pdf_path):
         else:
             print(f"Gotenberg error: {response.status_code} - {response.text}")
             return False
-    except Exception as e:
-        print(f"Gotenberg unavailable, trying local conversion…")
+    except requests.exceptions.RequestException as e:
+        print(f"Gotenberg unreachable at {GOTENBERG_URL}: {e}")
         return False
 
 
@@ -113,15 +122,4 @@ def _try_libreoffice(docx_path, pdf_path):
         return False
     except Exception as e:
         print(f"LibreOffice conversion failed: {e}")
-        return False
-
-
-def _try_docx2pdf(docx_path, pdf_path):
-    """Attempt conversion using the docx2pdf library (macOS / Windows)."""
-    try:
-        from docx2pdf import convert
-        convert(docx_path, pdf_path)
-        return os.path.exists(pdf_path)
-    except Exception as e:
-        print(f"docx2pdf conversion failed: {e}")
         return False

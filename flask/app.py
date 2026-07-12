@@ -26,7 +26,11 @@ load_dotenv()
 # ─── App Configuration ────────────────────────────────────────────────────────
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
+import tempfile
+if os.environ.get("VERCEL") == "1":
+    DATA_DIR = os.environ.get("DATA_DIR", tempfile.gettempdir())
+else:
+    DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
 UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 GENERATED_FOLDER = os.path.join(DATA_DIR, "generated")
 ALLOWED_EXT = {"docx"}
@@ -34,14 +38,14 @@ ALLOWED_EXT = {"docx"}
 app = Flask(__name__)
 app.secret_key = "essic-doc-numbering-secret-2026"
 supabase_url = os.environ.get("SUPABASE_DB_URL")
-if supabase_url:
-    if supabase_url.startswith("postgres://"):
-        supabase_url = supabase_url.replace("postgres://", "postgresql+psycopg://", 1)
-    elif supabase_url.startswith("postgresql://"):
-        supabase_url = supabase_url.replace("postgresql://", "postgresql+psycopg://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = supabase_url
-else:
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(DATA_DIR, 'documents.db')}"
+if not supabase_url:
+    raise RuntimeError("SUPABASE_DB_URL environment variable is required and not set.")
+
+if supabase_url.startswith("postgres://"):
+    supabase_url = supabase_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif supabase_url.startswith("postgresql://"):
+    supabase_url = supabase_url.replace("postgresql://", "postgresql+psycopg://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = supabase_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["GENERATED_FOLDER"] = GENERATED_FOLDER
@@ -299,26 +303,48 @@ def index():
                 is_internal = request.form.get("is_internal") == "1"
                 manager_is_sender = request.form.get("manager_is_sender") == "1"
 
+                import re
+                def remove_essic(text):
+                    if not text: return ""
+                    text = re.sub(r'\(\s*ESSIC\s*\)', '', text, flags=re.IGNORECASE)
+                    text = re.sub(r'ESSIC', '', text, flags=re.IGNORECASE)
+                    return text.strip()
+
+                default_sender = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)'
+                has_essic = any("ESSIC" in field.upper() for field in [
+                    recipient, subject, holder_name, position, full_body, 
+                    sender if sender else default_sender
+                ])
+                
+                if has_essic:
+                    recipient = remove_essic(recipient)
+                    subject = remove_essic(subject)
+                    holder_name = remove_essic(holder_name)
+                    position = remove_essic(position)
+                    full_body = remove_essic(full_body)
+                    sender = remove_essic(sender)
+                    default_sender = remove_essic(default_sender)
+
                 # Determine sender value for template
                 sender_value = ""
-                sender_top = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)\u200F'
+                sender_top = f"\u202A{sender}\u202C" if sender else f"\u202A{default_sender}\u202C"
                 
                 # If external OR manager is sender -> sender_value stays empty (manager signature kept)
                 # Only if internal AND NOT manager -> employee signature used
                 if is_internal and not manager_is_sender and sender:
-                    sender_value = f"مقدمه لسيادتكم\n{sender}\u200F"
-                    sender_top = f"{sender}\u200F"
+                    sender_value = f"\u202Bمقدمه لسيادتكم\n{sender}\u202C"
 
                 remove_manager = (is_internal and not manager_is_sender)
                 replace_placeholders(upload_path, generated_path, {
                     "{{CODE_NUMBER}}": full_code,
-                    "{{SEND_TO}}": (normalize_recipient(recipient) + "\u200F") if recipient else "",
-                    "{{SUBJECT}}": subject + "\u200F",
-                    "{{STACK_HOLDER}}": holder_name + "\u200F",
-                    "{{POSITION}}": position + "\u200F",
-                    "{{BODY_TEXT}}": full_body + "\u200F",
+                    "{{SEND_TO}}": ("\u202A" + normalize_recipient(recipient) + "\u202C") if recipient else "",
+                    "{{SUBJECT}}": "\u202A" + subject + "\u202C",
+                    "{{STACK_HOLDER}}": "\u202B" + holder_name + "\u202C",
+                    "{{POSITION}}": "\u202B" + position + "\u202C",
+                    "{{BODY_TEXT}}": "\u202B" + full_body + "\u202C",
                     "{{SENDER}}": sender_value,
                     "{{SENDER_TOP}}": sender_top,
+                    "{{ESSIC}}": "ESSIC" if has_essic else "",
                 }, remove_manager_sig=remove_manager)
                 
             # Attempt PDF generation
@@ -340,7 +366,7 @@ def index():
 
         if status == 'approved':
             # Upload to OneDrive using the onedrive service
-            from services.onedrive import upload_file_to_share
+            from services.onedrive import upload_file_to_share, LAST_ERROR
             if os.environ.get("ONEDRIVE_SHARE_URL"):
                 success = upload_file_to_share(generated_path, generated_name)
                 if generated_pdf_name:
@@ -348,8 +374,9 @@ def index():
                 if success:
                     flash("Document generated and successfully uploaded to OneDrive!", "success")
                 else:
-                    flash("Document generated locally, but OneDrive upload failed. Please check your credentials.",
-                          "warning")
+                    import services.onedrive as od
+                    flash(f"Document generated locally, but OneDrive upload failed. Error: {od.LAST_ERROR}",
+                          "danger")
             else:
                 flash("Document generated locally. (OneDrive upload not configured.)", "info")
         else:
@@ -406,8 +433,18 @@ def download(doc_id):
     doc = Document.query.get_or_404(doc_id)
     if not doc.generated_filename:
         abort(404)
+        
+    local_path = os.path.join(GENERATED_FOLDER, doc.generated_filename)
+    if not os.path.exists(local_path):
+        from services.onedrive import download_file_from_share
+        if os.environ.get("ONEDRIVE_SHARE_URL"):
+            download_file_from_share(doc.generated_filename, local_path)
+            
+    if not os.path.exists(local_path):
+        abort(404)
+        
     return send_from_directory(GENERATED_FOLDER, doc.generated_filename, as_attachment=True,
-        download_name=doc.generated_filename, )
+        download_name=doc.generated_filename)
 
 @app.route("/download_pdf/<int:doc_id>")
 @login_required
@@ -417,8 +454,19 @@ def download_pdf(doc_id):
     if not doc.generated_pdf_filename:
         flash("No PDF file available for this document.", "warning")
         return redirect(url_for("documents"))
+        
+    local_path = os.path.join(GENERATED_FOLDER, doc.generated_pdf_filename)
+    if not os.path.exists(local_path):
+        from services.onedrive import download_file_from_share
+        if os.environ.get("ONEDRIVE_SHARE_URL"):
+            download_file_from_share(doc.generated_pdf_filename, local_path)
+            
+    if not os.path.exists(local_path):
+        flash("File could not be found locally or on OneDrive.", "danger")
+        return redirect(url_for("documents"))
+        
     return send_from_directory(GENERATED_FOLDER, doc.generated_pdf_filename, as_attachment=True,
-        download_name=doc.generated_pdf_filename, )
+        download_name=doc.generated_pdf_filename)
 
 
 @app.route("/preview_document", methods=["POST"])
@@ -464,28 +512,55 @@ def preview_document():
             is_internal = request.form.get("is_internal") == "1"
             manager_is_sender = request.form.get("manager_is_sender") == "1"
 
+            import re
+            def remove_essic(text):
+                if not text: return ""
+                text = re.sub(r'\(\s*ESSIC\s*\)', '', text, flags=re.IGNORECASE)
+                text = re.sub(r'ESSIC', '', text, flags=re.IGNORECASE)
+                return text.strip()
+
+            default_sender = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)'
+            has_essic = any("ESSIC" in field.upper() for field in [
+                recipient, subject, holder_name, position, full_body,
+                sender if sender else default_sender
+            ])
+
+            if has_essic:
+                recipient = remove_essic(recipient)
+                subject = remove_essic(subject)
+                holder_name = remove_essic(holder_name)
+                position = remove_essic(position)
+                full_body = remove_essic(full_body)
+                sender = remove_essic(sender)
+                default_sender = remove_essic(default_sender)
+
             sender_value = ""
-            sender_top = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)\u200F'
+            sender_top = f"\u202A{sender}\u202C" if sender else f"\u202A{default_sender}\u202C"
             if is_internal and not manager_is_sender and sender:
-                sender_value = f"مقدمه لسيادتكم\n{sender}\u200F"
-                sender_top = f"{sender}\u200F"
+                sender_value = f"\u202Bمقدمه لسيادتكم\n{sender}\u202C"
 
             replace_placeholders(upload_path, temp_docx_path, {
                 "{{CODE_NUMBER}}": full_code,
-                "{{SEND_TO}}": (normalize_recipient(recipient) + "\u200F") if recipient else "",
-                "{{SUBJECT}}": subject + "\u200F",
-                "{{STACK_HOLDER}}": holder_name + "\u200F",
-                "{{POSITION}}": position + "\u200F",
-                "{{BODY_TEXT}}": full_body + "\u200F",
+                "{{SEND_TO}}": ("\u202A" + normalize_recipient(recipient) + "\u202C") if recipient else "",
+                "{{SUBJECT}}": "\u202A" + subject + "\u202C",
+                "{{STACK_HOLDER}}": "\u202B" + holder_name + "\u202C",
+                "{{POSITION}}": "\u202B" + position + "\u202C",
+                "{{BODY_TEXT}}": "\u202B" + full_body + "\u202C",
                 "{{SENDER}}": sender_value,
                 "{{SENDER_TOP}}": sender_top,
+                "{{ESSIC}}": "ESSIC" if has_essic else "",
             }, remove_manager_sig=(is_internal and not manager_is_sender))
         else:
             return jsonify({"success": False, "error": "Invalid action type"}), 400
             
         pdf_success = convert_docx_to_pdf(temp_docx_path, temp_pdf_path)
         if not pdf_success:
-            return jsonify({"success": False, "error": "Failed to generate PDF preview. Is Gotenberg running?"}), 500
+            return send_file(
+                temp_docx_path,
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                as_attachment=True,
+                download_name='preview_document.docx'
+            )
             
         return send_file(temp_pdf_path, mimetype='application/pdf')
         
@@ -665,7 +740,7 @@ def approve(doc_id):
     # Trigger OneDrive upload
     if doc.generated_filename:
         generated_path = os.path.join(GENERATED_FOLDER, doc.generated_filename)
-        from services.onedrive import upload_file_to_share
+        from services.onedrive import upload_file_to_share, LAST_ERROR
         if os.environ.get("ONEDRIVE_SHARE_URL") and os.path.exists(generated_path):
             success = upload_file_to_share(generated_path, doc.generated_filename)
             # Also upload the PDF if available
@@ -676,7 +751,8 @@ def approve(doc_id):
             if success:
                 flash(f"Document {doc.full_code} approved and uploaded to OneDrive!", "success")
             else:
-                flash(f"Document {doc.full_code} approved, but OneDrive upload failed.", "warning")
+                import services.onedrive as od
+                flash(f"Document {doc.full_code} approved, but OneDrive upload failed. Error: {od.LAST_ERROR}", "warning")
         else:
             flash(f"Document {doc.full_code} approved (OneDrive not configured or file missing).", "success")
     else:

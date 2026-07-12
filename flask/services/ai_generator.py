@@ -85,11 +85,18 @@ REQUEST_SYSTEM = f"""أنت محرر مراسلات رسمية محترف متخ
 # ─── Text cleanup ─────────────────────────────────────────────────────────────
 _GLITCH_SCRIPT_RE = re.compile(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]')
 _GLUED_LATIN_RE = re.compile(r'(?<=[\u0600-\u06FF])[a-zA-Z]{1,6}(?=[\u0600-\u06FF])')
+# Real abbreviations that legitimately appear embedded in Arabic sentences —
+# never strip these even though they match the glitch-cleanup pattern above.
+_KNOWN_ABBREVIATIONS = {"ESSIC", "HUE", "IT", "HR"}
 
 
 def _clean_output(text: str) -> str:
     text = _GLITCH_SCRIPT_RE.sub('', text)
-    text = _GLUED_LATIN_RE.sub('', text)
+
+    def _strip_unless_known(m: 're.Match') -> str:
+        return m.group(0) if m.group(0).upper() in _KNOWN_ABBREVIATIONS else ''
+
+    text = _GLUED_LATIN_RE.sub(_strip_unless_known, text)
     # Extract from <text>...</text> tags if present
     match = re.search(r'<text>(.*?)</text>', text, re.DOTALL)
     if match:
@@ -104,13 +111,14 @@ def _get_fernet():
     from cryptography.fernet import Fernet
     key = os.environ.get("FERNET_KEY")
     if not key:
-        # Auto-generate on first run and write to .env
-        new_key = Fernet.generate_key().decode()
-        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-        with open(env_path, "a") as f:
-            f.write(f"\nFERNET_KEY={new_key}\n")
-        os.environ["FERNET_KEY"] = new_key
-        key = new_key
+        raise RuntimeError(
+            "FERNET_KEY environment variable is not set. Generate one with "
+            "`python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\"` and set it as a fixed "
+            "env var (Vercel: `vercel env add FERNET_KEY`). Do not generate "
+            "this at runtime — it must stay constant or previously-encrypted "
+            "keys become undecryptable."
+        )
     return Fernet(key.encode() if isinstance(key, str) else key)
 
 
@@ -152,7 +160,7 @@ def _call_gemini(api_key: str, system: str, user_msg: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash-latest",
+        model_name="gemini-3.5-flash",
         system_instruction=system,
     )
     response = model.generate_content(user_msg)
@@ -194,7 +202,7 @@ def _is_rate_limit_error(e: Exception) -> bool:
     err_str = str(e).lower()
     return any(kw in err_str for kw in [
         "rate limit", "ratelimit", "429", "quota", "resource_exhausted",
-        "too many requests", "rateLimitExceeded", "tokens per"
+        "too many requests", "ratelimitexceeded", "tokens per"
     ])
 
 
@@ -274,7 +282,7 @@ def generate_arabic_text(
 
 
 def get_available_models() -> list:
-    return ["Gemini 1.5 Flash", "Groq LLaMA-3.1-70B", "DeepSeek Chat"]
+    return ["Gemini 3.5 Flash", "Groq LLaMA-3.3-70B", "DeepSeek Chat"]
 
 
 def build_full_document_text(generated_body: str) -> str:

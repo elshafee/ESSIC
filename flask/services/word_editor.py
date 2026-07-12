@@ -15,7 +15,6 @@ import copy
 from docx import Document
 from docx.oxml.ns import qn
 
-
 PLACEHOLDER = "{{CODE_NUMBER}}"
 
 
@@ -116,7 +115,7 @@ def replace_placeholders(input_path: str, output_path: str, replacements: dict, 
                 modified = True
                 if not full_text.strip():
                     remove_p = True
-        
+
         if modified:
             if remove_p:
                 paragraph._element.getparent().remove(paragraph._element)
@@ -129,14 +128,6 @@ def replace_placeholders(input_path: str, output_path: str, replacements: dict, 
                 # Restore alignment (replacement can reset it)
                 if saved_alignment is not None:
                     paragraph.alignment = saved_alignment
-                # Re-apply RTL marker to first run to prevent BIDI flip on English endings
-                rPr = paragraph.runs[0]._element.get_or_add_rPr()
-                from docx.oxml import OxmlElement
-                from docx.oxml.ns import qn
-                rtl_el = rPr.find(qn('w:rtl'))
-                if rtl_el is None:
-                    rtl_el = OxmlElement('w:rtl')
-                    rPr.append(rtl_el)
 
     def _replace_in_t(table):
         for row in table.rows:
@@ -161,10 +152,25 @@ def replace_placeholders(input_path: str, output_path: str, replacements: dict, 
             "ورئيس قسم الهندسة الطبية الحيوية",
             "محمد كمال عبد السلام"
         ]
-        for p in doc.paragraphs:
+
+        def _remove_manager_p(p):
             text = p.text
             if any(m_text in text for m_text in manager_texts):
                 p._element.getparent().remove(p._element)
+
+        for p in doc.paragraphs:
+            _remove_manager_p(p)
+
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        _remove_manager_p(p)
+                    for nested_table in cell.tables:
+                        for nested_row in nested_table.rows:
+                            for nested_cell in nested_row.cells:
+                                for nested_p in nested_cell.paragraphs:
+                                    _remove_manager_p(nested_p)
 
     for paragraph in doc.paragraphs:
         _replace_in_p(paragraph)
