@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 # Allow imports from project root
 sys.path.insert(0, os.path.dirname(__file__))
 
-from models import db, Document, User
+from models import db, Document, User, Contact
 from services.numbering import get_next_serial, build_full_code
 from services.word_editor import replace_placeholder
 
@@ -84,7 +84,9 @@ def inject_globals():
             user = User.query.filter_by(email=user_email).first()
             if user and user.role == 'admin':
                 is_admin = True
-    return dict(is_admin=is_admin)
+    
+    from services.onedrive import get_word_online_url
+    return dict(is_admin=is_admin, get_word_online_url=get_word_online_url)
 
 
 def is_current_user_admin():
@@ -268,6 +270,14 @@ def index():
             if not os.path.exists(upload_path):
                 flash("Default template (template_essic.docx) not found.", "danger")
                 return redirect(url_for("index"))
+        elif action_type == "reserve":
+            file_title = request.form.get("file_title", "Reserved Serial").strip()
+            upload_path = os.path.join(BASE_DIR, "template_essic.docx")
+            original_name = "template_essic.docx"
+            
+            if not os.path.exists(upload_path):
+                flash("Default template (template_essic.docx) not found.", "danger")
+                return redirect(url_for("index"))
         else:
             flash("Invalid action.", "danger")
             return redirect(url_for("index"))
@@ -282,13 +292,16 @@ def index():
         if action_type == "direct_template":
             timestamp = now.strftime("%Y%md_%H%M%S")
             generated_name = f"Direct_{timestamp}_{full_code.replace(' ', '_')}.docx"
+        elif action_type == "reserve":
+            timestamp = now.strftime("%Y%md_%H%M%S")
+            generated_name = f"Reserved_{timestamp}_{full_code.replace(' ', '_')}.docx"
         else:
             generated_name = f"{full_code.replace(' ', '_')}.docx"
             
         generated_path = os.path.join(GENERATED_FOLDER, generated_name)
 
         try:
-            if action_type == "upload":
+            if action_type == "upload" or action_type == "reserve":
                 replace_placeholder(upload_path, generated_path, full_code)
             elif action_type == "direct_template":
                 from services.word_editor import replace_placeholders
@@ -304,26 +317,22 @@ def index():
                 manager_is_sender = request.form.get("manager_is_sender") == "1"
 
                 import re
-                def remove_essic(text):
+                def remove_office_code(text):
                     if not text: return ""
                     text = re.sub(r'\(\s*ESSIC\s*\)', '', text, flags=re.IGNORECASE)
                     text = re.sub(r'ESSIC', '', text, flags=re.IGNORECASE)
                     return text.strip()
 
                 default_sender = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)'
-                has_essic = any("ESSIC" in field.upper() for field in [
-                    recipient, subject, holder_name, position, full_body, 
-                    sender if sender else default_sender
-                ])
                 
-                if has_essic:
-                    recipient = remove_essic(recipient)
-                    subject = remove_essic(subject)
-                    holder_name = remove_essic(holder_name)
-                    position = remove_essic(position)
-                    full_body = remove_essic(full_body)
-                    sender = remove_essic(sender)
-                    default_sender = remove_essic(default_sender)
+                # Unconditionally remove ESSIC text from all text fields
+                recipient = remove_office_code(recipient)
+                subject = remove_office_code(subject)
+                holder_name = remove_office_code(holder_name)
+                position = remove_office_code(position)
+                full_body = remove_office_code(full_body)
+                sender = remove_office_code(sender)
+                default_sender = remove_office_code(default_sender)
 
                 # Determine sender value for template
                 sender_value = ""
@@ -344,7 +353,7 @@ def index():
                     "{{BODY_TEXT}}": "\u202B" + full_body + "\u202C",
                     "{{SENDER}}": sender_value,
                     "{{SENDER_TOP}}": sender_top,
-                    "{{ESSIC}}": "ESSIC" if has_essic else "",
+                    "{{ESSIC}}": "",
                 }, remove_manager_sig=remove_manager)
                 
             # Attempt PDF generation
@@ -363,24 +372,39 @@ def index():
         is_admin = is_current_user_admin()
 
         status = 'approved' if is_admin else 'pending'
+        if action_type == "reserve":
+            status = 'pending'
 
-        if status == 'approved':
+        if generated_name:
             # Upload to OneDrive using the onedrive service
             from services.onedrive import upload_file_to_share, LAST_ERROR
             if os.environ.get("ONEDRIVE_SHARE_URL"):
                 success = upload_file_to_share(generated_path, generated_name)
                 if generated_pdf_name:
                     upload_file_to_share(generated_pdf_path, generated_pdf_name)
+                
+                # Cleanup preview
+                old_preview = session.pop('last_preview_filename', None)
+                if old_preview:
+                    from services.onedrive import delete_file_from_share
+                    delete_file_from_share(old_preview)
+                
                 if success:
-                    flash("Document generated and successfully uploaded to OneDrive!", "success")
+                    if status == 'approved':
+                        flash("Document generated and successfully uploaded to OneDrive!", "success")
+                    else:
+                        flash("Document generated and uploaded to OneDrive. Pending admin approval.", "info")
                 else:
                     import services.onedrive as od
-                    flash(f"Document generated locally, but OneDrive upload failed. Error: {od.LAST_ERROR}",
-                          "danger")
+                    if status == 'approved':
+                        flash(f"Document generated locally, but OneDrive upload failed. Error: {od.LAST_ERROR}", "danger")
+                    else:
+                        flash(f"Document pending, but OneDrive upload failed. Error: {od.LAST_ERROR}", "danger")
             else:
-                flash("Document generated locally. (OneDrive upload not configured.)", "info")
-        else:
-            flash("Document uploaded successfully. It is pending admin approval.", "info")
+                if status == 'approved':
+                    flash("Document generated locally. (OneDrive upload not configured.)", "info")
+                else:
+                    flash("Document uploaded successfully. It is pending admin approval.", "info")
 
         # Save record to database
         doc = Document(serial_number=serial, full_code=full_code, month=month, year=year, filename=original_name,
@@ -397,7 +421,35 @@ def index():
             doc.is_internal = request.form.get("is_internal") == "1"
             doc.manager_is_sender = request.form.get("manager_is_sender") == "1"
             doc.generated_body = request.form.get("full_body", "")
+
+            # Auto-save contact info
+            if doc.recipient:
+                existing_rec = Contact.query.filter_by(name=doc.recipient, type="recipient").first()
+                if existing_rec:
+                    if doc.holder_name:
+                        existing_rec.holder_name = doc.holder_name
+                    if doc.position:
+                        existing_rec.position = doc.position
+                else:
+                    new_rec = Contact(name=doc.recipient, type="recipient", holder_name=doc.holder_name, position=doc.position)
+                    db.session.add(new_rec)
             
+            if doc.sender:
+                existing_sender = Contact.query.filter_by(name=doc.sender, type="sender").first()
+                if not existing_sender:
+                    new_sender = Contact(name=doc.sender, type="sender")
+                    db.session.add(new_sender)
+        elif action_type == "reserve":
+            doc.doc_type = "reserved"
+
+        # Store the direct SharePoint Word Online URL
+        if generated_name:
+            try:
+                from services.onedrive import get_word_online_url
+                doc.sharepoint_url = get_word_online_url(generated_name)
+            except Exception:
+                pass
+
         db.session.add(doc)
         db.session.commit()
 
@@ -410,7 +462,18 @@ def index():
     now_preview = datetime.now()
     next_serial = get_next_serial(now_preview.month, now_preview.year)
     preview_code = build_full_code(next_serial, now_preview.month, now_preview.year)
-    return render_template("index.html", preview_code=preview_code)
+    
+    contacts = Contact.query.all()
+    contacts_data = [
+        {
+            "name": c.name,
+            "type": c.type,
+            "holder_name": c.holder_name,
+            "position": c.position
+        } for c in contacts
+    ]
+    
+    return render_template("index.html", preview_code=preview_code, contacts=contacts_data)
 
 
 @app.route("/documents")
@@ -469,6 +532,43 @@ def download_pdf(doc_id):
         download_name=doc.generated_pdf_filename)
 
 
+@app.route("/view_pdf/<int:doc_id>")
+@login_required
+def view_pdf(doc_id):
+    """View the generated PDF document inline."""
+    doc = Document.query.get_or_404(doc_id)
+    if not doc.generated_pdf_filename:
+        flash("No PDF file available for this document.", "warning")
+        return redirect(url_for("documents"))
+        
+    local_path = os.path.join(GENERATED_FOLDER, doc.generated_pdf_filename)
+    if not os.path.exists(local_path):
+        from services.onedrive import download_file_from_share
+        if os.environ.get("ONEDRIVE_SHARE_URL"):
+            download_file_from_share(doc.generated_pdf_filename, local_path)
+            
+    if not os.path.exists(local_path):
+        flash("File could not be found locally or on OneDrive.", "danger")
+        return redirect(url_for("documents"))
+        
+    return send_from_directory(GENERATED_FOLDER, doc.generated_pdf_filename, as_attachment=False)
+
+
+@app.route("/view_word/<int:doc_id>")
+@login_required
+def view_word_online(doc_id):
+    """Redirect to Word Online to view the document."""
+    doc = Document.query.get_or_404(doc_id)
+    if not doc.generated_filename:
+        flash("No Word file available.", "warning")
+        return redirect(url_for("documents"))
+        
+    import urllib.parse
+    filename = urllib.parse.quote(doc.generated_filename)
+    url = f"https://horusuni-my.sharepoint.com/personal/aelshafee_horus_edu_eg/_layouts/15/Doc.aspx?sourcedoc=/personal/aelshafee_horus_edu_eg/Documents/ESSIC_Docs/{filename}&action=default"
+    return redirect(url)
+
+
 @app.route("/preview_document", methods=["POST"])
 @login_required
 def preview_document():
@@ -477,8 +577,8 @@ def preview_document():
     import tempfile
     from services.word_editor import replace_placeholder, replace_placeholders
     from services.ai_generator import normalize_recipient
-    from services.pdf_converter import convert_docx_to_pdf
-    from flask import send_file, jsonify
+    from services.onedrive import upload_file_to_share, get_word_online_url
+    from flask import jsonify
     
     now = datetime.now()
     serial = get_next_serial(now.month, now.year)
@@ -486,11 +586,10 @@ def preview_document():
     
     temp_dir = tempfile.mkdtemp()
     temp_docx_path = os.path.join(temp_dir, "preview.docx")
-    temp_pdf_path = os.path.join(temp_dir, "preview.pdf")
     
     try:
         if action_type == "upload":
-            file = request.files.get("document")
+            file = request.files.get("document") or request.files.get("docx_file")
             if not file or file.filename == "":
                 return jsonify({"success": False, "error": "No file uploaded"}), 400
             
@@ -513,26 +612,22 @@ def preview_document():
             manager_is_sender = request.form.get("manager_is_sender") == "1"
 
             import re
-            def remove_essic(text):
+            def remove_office_code(text):
                 if not text: return ""
                 text = re.sub(r'\(\s*ESSIC\s*\)', '', text, flags=re.IGNORECASE)
                 text = re.sub(r'ESSIC', '', text, flags=re.IGNORECASE)
                 return text.strip()
 
             default_sender = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)'
-            has_essic = any("ESSIC" in field.upper() for field in [
-                recipient, subject, holder_name, position, full_body,
-                sender if sender else default_sender
-            ])
-
-            if has_essic:
-                recipient = remove_essic(recipient)
-                subject = remove_essic(subject)
-                holder_name = remove_essic(holder_name)
-                position = remove_essic(position)
-                full_body = remove_essic(full_body)
-                sender = remove_essic(sender)
-                default_sender = remove_essic(default_sender)
+            
+            # Unconditionally remove ESSIC text from all text fields
+            recipient = remove_office_code(recipient)
+            subject = remove_office_code(subject)
+            holder_name = remove_office_code(holder_name)
+            position = remove_office_code(position)
+            full_body = remove_office_code(full_body)
+            sender = remove_office_code(sender)
+            default_sender = remove_office_code(default_sender)
 
             sender_value = ""
             sender_top = f"\u202A{sender}\u202C" if sender else f"\u202A{default_sender}\u202C"
@@ -548,24 +643,123 @@ def preview_document():
                 "{{BODY_TEXT}}": "\u202B" + full_body + "\u202C",
                 "{{SENDER}}": sender_value,
                 "{{SENDER_TOP}}": sender_top,
-                "{{ESSIC}}": "ESSIC" if has_essic else "",
+                "{{ESSIC}}": "",
             }, remove_manager_sig=(is_internal and not manager_is_sender))
         else:
             return jsonify({"success": False, "error": "Invalid action type"}), 400
             
-        pdf_success = convert_docx_to_pdf(temp_docx_path, temp_pdf_path)
-        if not pdf_success:
-            return send_file(
-                temp_docx_path,
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                as_attachment=True,
-                download_name='preview_document.docx'
-            )
+        # Upload the temporary preview doc to OneDrive
+        if os.environ.get("ONEDRIVE_SHARE_URL"):
+            user_email = session.get('user', {}).get('email', 'unknown')
+            username = user_email.split('@')[0]
+            timestamp = int(now.timestamp())
+            gen_name = f"Preview_{username}_{timestamp}.docx"
             
-        return send_file(temp_pdf_path, mimetype='application/pdf')
+            success = upload_file_to_share(temp_docx_path, gen_name)
+            if success:
+                from services.onedrive import delete_file_from_share
+                old_preview = session.get('last_preview_filename')
+                if old_preview and old_preview != gen_name:
+                    # Attempt to delete the previous preview file to keep OneDrive clean
+                    delete_file_from_share(old_preview)
+                session['last_preview_filename'] = gen_name
+                
+                url = get_word_online_url(gen_name)
+                return jsonify({"success": True, "word_online_url": url})
+            else:
+                import services.onedrive as od
+                return jsonify({"success": False, "error": f"Failed to upload preview to OneDrive. {od.LAST_ERROR}"})
+        else:
+            return jsonify({"success": False, "error": "OneDrive is not configured. Cannot preview in Word Online."})
         
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/extract_text", methods=["POST"])
+@login_required
+def extract_text():
+    file = request.files.get("docx_file")
+    if not file or not allowed_file(file.filename):
+        return jsonify({"success": False, "error": "Invalid file"}), 400
+        
+    try:
+        from docx import Document
+        doc = Document(file)
+        raw_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        
+        from services.ai_generator import extract_document_fields
+        user_email = session.get('user', {}).get('email', '')
+        
+        fields = extract_document_fields(raw_text, user_email)
+        
+        if fields:
+            return jsonify({"success": True, "text": fields.get("full_body", raw_text), "fields": fields})
+        else:
+            return jsonify({"success": True, "text": raw_text, "fields": None})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/upload_reserved/<int:doc_id>", methods=["POST"])
+@login_required
+def upload_reserved(doc_id):
+    """Upload finalized document for a reserved serial."""
+    doc = Document.query.get_or_404(doc_id)
+    
+    if doc.doc_type != "reserved":
+        flash("This document is not eligible for this action.", "danger")
+        return redirect(url_for("documents"))
+        
+    file = request.files.get("docx_file")
+    if not file or file.filename == "":
+        flash("Please select a Word document to upload.", "warning")
+        return redirect(url_for("documents"))
+        
+    if not allowed_file(file.filename):
+        flash("Only .docx files are accepted.", "danger")
+        return redirect(url_for("documents"))
+        
+    try:
+        now = datetime.now()
+        timestamp = now.strftime("%Y%md_%H%M%S")
+        original_name = secure_filename(file.filename)
+        generated_name = f"Final_{timestamp}_{doc.full_code.replace(' ', '_')}.docx"
+        
+        generated_path = os.path.join(GENERATED_FOLDER, generated_name)
+        file.save(generated_path)
+        
+        from services.pdf_converter import convert_docx_to_pdf
+        generated_pdf_name = generated_name.replace(".docx", ".pdf")
+        generated_pdf_path = os.path.join(GENERATED_FOLDER, generated_pdf_name)
+        pdf_success = convert_docx_to_pdf(generated_path, generated_pdf_path)
+        if not pdf_success:
+            generated_pdf_name = None
+            
+        doc.filename = original_name
+        doc.generated_filename = generated_name
+        doc.generated_pdf_filename = generated_pdf_name
+        
+        is_admin = is_current_user_admin()
+        status = 'approved' if is_admin else 'pending'
+        
+        if status == 'approved':
+            from services.onedrive import upload_file_to_share
+            if os.environ.get("ONEDRIVE_SHARE_URL"):
+                upload_file_to_share(generated_path, generated_name)
+                if generated_pdf_name:
+                    upload_file_to_share(generated_pdf_path, generated_pdf_name)
+                    
+        doc.status = status
+        db.session.commit()
+        
+        if status == 'approved':
+            flash("Final document uploaded and approved!", "success")
+        else:
+            flash("Final document uploaded successfully. It is pending admin approval.", "info")
+            
+    except Exception as e:
+        flash(f"Error processing finalized document: {e}", "danger")
+        
+    return redirect(url_for("documents"))
 
 @app.route("/edit/<int:doc_id>", methods=["GET", "POST"])
 @login_required
@@ -639,23 +833,41 @@ def edit(doc_id):
                 from services.word_editor import replace_placeholders
                 from services.ai_generator import normalize_recipient
                 
+                import re
+                def remove_office_code(text):
+                    if not text: return ""
+                    text = re.sub(r'\(\s*ESSIC\s*\)', '', text, flags=re.IGNORECASE)
+                    text = re.sub(r'ESSIC', '', text, flags=re.IGNORECASE)
+                    return text.strip()
+
+                default_sender = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)'
+                
+                # Unconditionally remove ESSIC text from all text fields
+                doc.recipient = remove_office_code(doc.recipient)
+                doc.subject = remove_office_code(doc.subject)
+                doc.holder_name = remove_office_code(doc.holder_name)
+                doc.position = remove_office_code(doc.position)
+                full_body = remove_office_code(full_body)
+                doc.sender = remove_office_code(doc.sender)
+                default_sender = remove_office_code(default_sender)
+
                 body_to_use = full_body
                 sender_value = ""
-                sender_top = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)\u200F'
+                sender_top = f"\u202A{doc.sender}\u202C" if doc.sender else f"\u202A{default_sender}\u202C"
                 
                 if doc.is_internal and not doc.manager_is_sender and doc.sender:
-                    sender_value = f"مقدمه لسيادتكم\n{doc.sender}\u200F"
-                    sender_top = f"{doc.sender}\u200F"
+                    sender_value = f"\u202Bمقدمه لسيادتكم\n{doc.sender}\u202C"
 
                 replace_placeholders(upload_path, new_generated_path, {
                     "{{CODE_NUMBER}}": new_full_code,
-                    "{{SEND_TO}}": (normalize_recipient(doc.recipient) + "\u200F") if doc.recipient else "",
-                    "{{SUBJECT}}": doc.subject + "\u200F",
-                    "{{STACK_HOLDER}}": (doc.holder_name or "") + "\u200F",
-                    "{{POSITION}}": (doc.position or "") + "\u200F",
-                    "{{BODY_TEXT}}": (body_to_use or "") + "\u200F",
+                    "{{SEND_TO}}": ("\u202A" + normalize_recipient(doc.recipient) + "\u202C") if doc.recipient else "",
+                    "{{SUBJECT}}": "\u202A" + doc.subject + "\u202C",
+                    "{{STACK_HOLDER}}": "\u202B" + (doc.holder_name or "") + "\u202C",
+                    "{{POSITION}}": "\u202B" + (doc.position or "") + "\u202C",
+                    "{{BODY_TEXT}}": "\u202B" + (body_to_use or "") + "\u202C",
                     "{{SENDER}}": sender_value,
                     "{{SENDER_TOP}}": sender_top,
+                    "{{ESSIC}}": "",
                 }, remove_manager_sig=(doc.is_internal and not doc.manager_is_sender))
             else:
                 from services.word_editor import replace_placeholder
@@ -905,7 +1117,17 @@ def ai_step1():
 def ai_step2(doc_type):
     if doc_type not in ("letter", "request"):
         return redirect(url_for("ai_step1"))
-    return render_template("ai_step2.html", doc_type=doc_type, models=get_available_models())
+        
+    contacts = Contact.query.all()
+    contacts_data = [
+        {
+            "name": c.name,
+            "type": c.type,
+            "holder_name": c.holder_name,
+            "position": c.position
+        } for c in contacts
+    ]
+    return render_template("ai_step2.html", doc_type=doc_type, models=get_available_models(), contacts=contacts_data)
 
 
 @app.route("/ai/generate", methods=["POST"])
@@ -956,36 +1178,71 @@ def ai_finalize():
     full_body = request.form.get("full_body", "")
     model = request.form.get("model")
 
-    file = request.files.get("docx_file")
-    if not file or file.filename == "":
-        flash("يرجى رفع ملف القالب (.docx).", "warning")
-        return redirect(url_for("ai_step1"))
-    if not allowed_file(file.filename):
-        flash("يُقبل ملفات .docx فقط.", "danger")
-        return redirect(url_for("ai_step1"))
+    table_data_str = request.form.get("table_data", "[]")
+    import json
+    try:
+        table_data = json.loads(table_data_str)
+    except:
+        table_data = []
 
-    original_name = secure_filename(file.filename)
-    upload_path = os.path.join(UPLOAD_FOLDER, original_name)
-    file.save(upload_path)
+    image_paths = []
+    images = request.files.getlist("images")
+    if images:
+        import uuid
+        for img in images:
+            if img.filename:
+                ext = img.filename.split('.')[-1]
+                temp_path = os.path.join(UPLOAD_FOLDER, f"temp_{uuid.uuid4().hex}.{ext}")
+                img.save(temp_path)
+                image_paths.append(temp_path)
+
+    upload_path = os.path.join(BASE_DIR, "template_essic.docx")
+    if not os.path.exists(upload_path):
+        flash("قالب النظام الأساسي غير موجود.", "danger")
+        return redirect(url_for("ai_step1"))
+        
+    original_name = "template_essic.docx"
 
     now = datetime.utcnow()
     serial = get_next_serial(now.month, now.year)
     code = build_full_code(serial, now.month, now.year)
 
-    stem = original_name.rsplit(".", 1)[0]
+    stem = "template_essic"
     gen_name = f"{stem}__{code.replace(' ', '_')}.docx"
     gen_path = os.path.join(GENERATED_FOLDER, gen_name)
+
+    import re
+    def remove_office_code(text):
+        if not text: return ""
+        text = re.sub(r'\(\s*ESSIC\s*\)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'ESSIC', '', text, flags=re.IGNORECASE)
+        return text.strip()
+
+    default_sender = 'مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)'
+    
+    # Unconditionally remove ESSIC text from all text fields
+    recipient = remove_office_code(recipient)
+    subject = remove_office_code(subject)
+    holder_name = remove_office_code(holder_name)
+    position = remove_office_code(position)
+    full_body = remove_office_code(full_body)
+    sender = remove_office_code(sender)
+    default_sender = remove_office_code(default_sender)
+
+    sender_top = f"\u202A{sender}\u202C" if sender else f"\u202A{default_sender}\u202C"
 
     try:
         replace_placeholders(upload_path, gen_path, {
             "{{CODE_NUMBER}}": code,
-            "{{SEND_TO}}": normalize_recipient(recipient),
-            "{{SUBJECT}}": subject,
-            "{{STACK_HOLDER}}": holder_name,
-            "{{POSITION}}": position,
-            "{{BODY_TEXT}}": full_body,
-            "{{SENDER}}": sender,
-        })
+            "{{SEND_TO}}": "\u202A" + normalize_recipient(recipient) + "\u202C" if recipient else "",
+            "{{SUBJECT}}": "\u202A" + subject + "\u202C",
+            "{{STACK_HOLDER}}": "\u202B" + holder_name + "\u202C",
+            "{{POSITION}}": "\u202B" + position + "\u202C",
+            "{{BODY_TEXT}}": "\u202B" + full_body + "\u202C",
+            "{{SENDER}}": "", # Manager signature kept
+            "{{SENDER_TOP}}": sender_top,
+            "{{ESSIC}}": "",
+        }, table_data=table_data, image_paths=image_paths)
         
         from services.pdf_converter import convert_docx_to_pdf
         gen_pdf_name = gen_name.replace(".docx", ".pdf")
@@ -1006,15 +1263,41 @@ def ai_finalize():
         sender=sender, recipient=recipient, subject=subject, holder_name=holder_name, position=position, raw_draft=raw_draft, generated_body=full_body,
         filename=original_name, generated_filename=gen_name, generated_pdf_filename=gen_pdf_name, ai_model=model, username=user_name, email=user_email,
         status=status, )
+    
+    # Auto-save contact info
+    if recipient:
+        existing_rec = Contact.query.filter_by(name=recipient, type="recipient").first()
+        if existing_rec:
+            if holder_name:
+                existing_rec.holder_name = holder_name
+            if position:
+                existing_rec.position = position
+        else:
+            new_rec = Contact(name=recipient, type="recipient", holder_name=holder_name, position=position)
+            db.session.add(new_rec)
+    
+    if sender:
+        existing_sender = Contact.query.filter_by(name=sender, type="sender").first()
+        if not existing_sender:
+            new_sender = Contact(name=sender, type="sender")
+            db.session.add(new_sender)
+
     db.session.add(doc)
     db.session.commit()
 
-    if status == 'approved':
-        from services.onedrive import upload_file_to_onedrive
-        try:
-            upload_file_to_onedrive(gen_path, gen_name)
-        except Exception as e:
-            flash(f"Error uploading to OneDrive: {e}", "danger")
+    if gen_name:
+        from services.onedrive import upload_file_to_share
+        if os.environ.get("ONEDRIVE_SHARE_URL"):
+            upload_success = upload_file_to_share(gen_path, gen_name)
+            try:
+                from services.onedrive import get_word_online_url
+                doc.sharepoint_url = get_word_online_url(gen_name)
+                db.session.commit()
+            except Exception:
+                pass
+            if not upload_success:
+                from services.onedrive import LAST_ERROR
+                flash(f"Error uploading to OneDrive: {LAST_ERROR}", "danger")
 
     flash(f"تم إنشاء المستند بنجاح — الرمز: <strong>Code No {code}</strong>", "success")
     return redirect(url_for("documents"))
@@ -1033,6 +1316,23 @@ def api_ai_regenerate():
         return jsonify({"success": True, "body": result["text"], "full_body": full_body,
                         "warning": result.get("warning")})
     return jsonify({"success": False, "error": result["error"]})
+
+@app.route("/api/ai/format", methods=["POST"])
+@login_required
+def api_ai_format_document():
+    data = request.get_json()
+    user_email = session['user']['email']
+    full_body = data.get("full_body", "")
+    has_table = data.get("has_table", False)
+    has_images = data.get("has_images", False)
+    
+    from services.ai_generator import format_document_with_ai
+    result = format_document_with_ai(full_body, has_table, has_images, user_email)
+    
+    if result.get("success"):
+        return jsonify({"success": True, "full_body": result["text"]})
+    return jsonify({"success": False, "error": result.get("error", "Unknown error")})
+
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────
@@ -1066,5 +1366,64 @@ def settings_page():
     return render_template("settings.html", user_keys=user_keys)
 
 
+# ─── Contacts Management ─────────────────────────────────────────────────────
+
+@app.route("/contacts")
+@login_required
+def contacts():
+    all_contacts = Contact.query.order_by(Contact.name).all()
+    return render_template("contacts.html", contacts=all_contacts)
+
+
+@app.route("/contacts/add", methods=["POST"])
+@login_required
+@admin_required
+def add_contact():
+    name = request.form.get("name", "").strip()
+    c_type = request.form.get("type", "").strip()
+    holder_name = request.form.get("holder_name", "").strip()
+    position = request.form.get("position", "").strip()
+    
+    if name:
+        contact = Contact(
+            name=name,
+            type=c_type if c_type else None,
+            holder_name=holder_name,
+            position=position
+        )
+        db.session.add(contact)
+        db.session.commit()
+        flash("Contact added successfully.", "success")
+    else:
+        flash("Name is required.", "danger")
+        
+    return redirect(url_for('contacts'))
+
+
+@app.route("/contacts/edit/<int:contact_id>", methods=["POST"])
+@login_required
+@admin_required
+def edit_contact(contact_id):
+    contact = Contact.query.get_or_404(contact_id)
+    contact.name = request.form.get("name", "").strip()
+    c_type = request.form.get("type", "").strip()
+    contact.type = c_type if c_type else None
+    contact.holder_name = request.form.get("holder_name", "").strip()
+    contact.position = request.form.get("position", "").strip()
+    
+    db.session.commit()
+    flash("Contact updated successfully.", "success")
+    return redirect(url_for('contacts'))
+
+
+@app.route("/contacts/delete/<int:contact_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_contact(contact_id):
+    contact = Contact.query.get_or_404(contact_id)
+    db.session.delete(contact)
+    db.session.commit()
+    flash("Contact deleted successfully.", "success")
+    return redirect(url_for('contacts'))
 if __name__ == "__main__":
     app.run(debug=true, host="0.0.0.0", port=5010)

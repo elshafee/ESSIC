@@ -31,55 +31,93 @@ def normalize_recipient(recipient: str) -> str:
 
 
 # ─── System prompts ────────────────────────────────────────────────────────────
-STYLE_DESCRIPTION = """الأسلوب الرسمي المطلوب: يبدأ بتحية افتتاحية دبلوماسية ("يسعدنا أن نتوجه لشخصكم الكريم بخالص آيات التحية والتقدير...")،
-ثم ينتقل بعبارات وصل رسمية مثل "نود أن نلفت عنايتكم الكريمة إلى ..." أو "نتشرف بإحاطة سيادتكم بـ ..." لعرض السياق،
-ثم يستخدم صيغة التماس مهذبة مثل "نلتمس من سيادتكم التكرم بـ ..." أو "نرجو التكرم بالموافقة على ..." لصياغة الطلب،
-ثم جملة تؤكد الفائدة أو الأثر المتوقع،
-وينتهي بجملة شكر وتطلع للرد مثل "نشكركم على اهتمامكم ودعمكم المستمر، ونأمل التكرم بالرد في أقرب وقت ممكن."
-التزم بهذا الإيقاع والمفردات الرسمية العامة، لكن ابنِ كل جملة من جديد بناءً على محتوى المسودة الفعلي أدناه — لا يوجد نص جاهز لنسخه هنا."""
+STYLE_DESCRIPTION = """الأسلوب الرسمي المطلوب: يجب أن يكون الخطاب مباشراً، مهنياً، وموجزاً قدر الإمكان.
+تجنب الديباجات الطويلة، والمقدمات، والخواتيم المبالغ فيها. ركز على نقل المعلومات والطلبات بشكل دقيق ومباشر.
+ابنِ الجمل بناءً على محتوى المسودة الفعلي أدناه فقط، دون إضافة أي حشو أو تفاصيل إنشائية غير ضرورية."""
 
-LETTER_SYSTEM = f"""أنت محرر مراسلات رسمية محترف متخصص في صياغة الخطابات الإدارية باللغة العربية الفصحى الرسمية.
-مهمتك: إعادة صياغة وتحرير النص المقدم إليك ليكون خطاباً رسمياً متكاملاً ومضبوطاً.
+LETTER_SYSTEM = f"""أنت محرر مراسلات رسمية محترف متخصص في صياغة الخطابات الإدارية باللغة العربية الفصحى الرسمية والمباشرة.
+مهمتك: إعادة صياغة وتحرير النص المقدم إليك ليكون خطاباً رسمياً، دقيقاً، ومختصراً.
 
 {STYLE_DESCRIPTION}
 
-يجب أن يتكون جسم الخطاب من الفقرات التالية بالترتيب، ولا يجوز حذف أي منها أو دمجها في فقرة واحدة مختصرة:
-1. فقرة افتتاحية قصيرة (جملة أو جملتان) للتحية والتقديم.
-2. فقرة السياق: اشرح خلفية الموضوع وسببه بالتفصيل، مستندًا حصريًا إلى كل ما ورد في "المسودة / الفكرة الرئيسية" — لا تختصر أو تُسقط أي تفصيل تقني أو رقم أو اسم ورد فيها.
-3. فقرة الطلب: صغ الطلب أو المطلوب تحديدًا بوضوح تام، بحيث يفهم القارئ بالضبط ماذا يُطلب منه أن يفعل.
-4. فقرة الأثر/الفائدة: اشرح بجملتين على الأقل الفائدة المتوقعة من تلبية هذا الطلب، بما يتعلق تحديدًا بموضوع الطلب نفسه (وليس بموضوع عام آخر).
-5. فقرة ختامية: الشكر والتطلع للرد.
+قواعد الصياغة:
+1. الدخول في صلب الموضوع مباشرة بعد تحية قصيرة جداً إن لزم الأمر.
+2. عرض السياق والطلب بناءً على المسودة حصرياً بشكل واضح وموجز.
+3. اختتام الخطاب بعبارة شكر قصيرة جداً (مثل: وتفضلوا بقبول فائق الاحترام).
 
 القواعد الصارمة:
-- استخدم اللغة العربية الفصحى الرسمية فقط
-- الأسلوب: رسمي، مهذب، محترم، دبلوماسي
-- لا تكتب خطابًا مختصرًا — يجب تغطية الفقرات الخمس أعلاه جميعها بالتفصيل
-- لا تضف أي نص خارج الخطاب نفسه
-- لا تضف تعليقات أو ملاحظات أو عناوين أو أرقام الفقرات
-- لا تكتب أسطر المرسل أو المرسل إليه أو الموضوع أو التوقيع
-- أعد فقط نص جسم الخطاب
-- حافظ على جميع المعلومات التقنية والأسماء والأرقام كما هي"""
+- لا تضف أي فقرات ترحيبية أو إنشائية طويلة. كن مباشراً.
+- استخدم اللغة العربية الفصحى الرسمية الواضحة والمباشرة.
+- لا تضف أي نص، تعليقات، عناوين، أو أرقام فقرات خارج جسم الخطاب نفسه.
+- لا تكتب أسطر المرسل أو المرسل إليه أو الموضوع أو التوقيع.
+- أعد فقط نص جسم الخطاب.
+- حافظ على جميع المعلومات التقنية والأسماء والأرقام كما هي.
 
-REQUEST_SYSTEM = f"""أنت محرر مراسلات رسمية محترف متخصص في صياغة المذكرات والطلبات الإدارية باللغة العربية الفصحى الرسمية.
-مهمتك: إعادة صياغة وتحرير النص المقدم إليك ليكون طلباً رسمياً متكاملاً ومضبوطاً.
+{{attachment_instruction}}"""
+
+REQUEST_SYSTEM = f"""أنت محرر مراسلات رسمية محترف متخصص في صياغة المذكرات والطلبات الإدارية باللغة العربية الفصحى الرسمية والمباشرة.
+مهمتك: إعادة صياغة وتحرير النص المقدم إليك ليكون طلباً رسمياً، دقيقاً، ومختصراً.
 
 {STYLE_DESCRIPTION}
 
-يجب أن يتكون جسم الطلب من الفقرات التالية بالترتيب:
-1. فقرة افتتاحية قصيرة للتحية والتقديم.
-2. فقرة السياق بالتفصيل.
-3. فقرة الطلب بوضوح تام.
-4. فقرة الأثر/الفائدة بجملتين على الأقل.
-5. فقرة ختامية: الشكر والتطلع للرد.
+قواعد الصياغة:
+1. الدخول في صلب الموضوع مباشرة.
+2. عرض المبررات والطلب بشكل واضح، مباشر، وموجز.
+3. اختتام الطلب بعبارة شكر قصيرة جداً.
 
 القواعد الصارمة:
-- استخدم اللغة العربية الفصحى الرسمية فقط
-- الأسلوب: رسمي، واضح، مباشر، مهذب
-- لا تكتب طلبًا مختصرًا — يجب تغطية الفقرات الخمس جميعها
-- لا تضف تعليقات أو أرقام فقرات
-- لا تكتب أسطر المرسل أو المرسل إليه أو التوقيع
-- أعد فقط نص جسم الطلب
-- حافظ على جميع الأرقام والأسماء كما هي"""
+- لا تضف أي فقرات ترحيبية أو إنشائية طويلة.
+- استخدم اللغة العربية الفصحى الرسمية الواضحة والمباشرة.
+- لا تضف أي نص، تعليقات، عناوين، أو أرقام فقرات.
+- لا تكتب أسطر المرسل أو المرسل إليه أو التوقيع.
+- أعد فقط نص جسم الطلب.
+- حافظ على جميع الأرقام والأسماء كما هي تماماً.
+
+{{attachment_instruction}}"""
+
+EXTRACTION_SYSTEM = """أنت مساعد ذكي متخصص في تحليل المراسلات الرسمية والخطابات الإدارية باللغة العربية.
+مهمتك: قراءة النص المستخرج من المستند المرفق واستخراج الحقول التالية منه بدقة تامة:
+
+1. recipient (المرسل إليه / الجهة أو القسم): 
+   - مثال: "مكتب السيد الأستاذ الدكتور / رئيس الجامعة" أو "كلية الهندسة".
+   - استخرج اسم الجهة كاملاً كما هو مكتوب في الخطاب (مثلاً إذا كان مكتوباً "مكتب نائب رئيس الجامعة" اكتبها كاملة).
+   - إذا كان الخطاب موجهاً لشخص بصفته، يمكن أن يكون الـ recipient هو الإدارة أو المكتب التابع له.
+
+2. holder_name (اسم الشخص الموجه إليه الخطاب):
+   - مثال: "السيد الأستاذ الدكتور / محمد عبدالعال الموقر" أو "أ.د/ فلان".
+   - هذا الحقل مخصص للاسم الشخصي والألقاب التي تسبقه.
+
+3. position (المنصب / صفة الشخص الموجه إليه الخطاب):
+   - مثال: "نائب رئيس الجامعة لشئون التعليم والطلاب" أو "عميد الكلية".
+   - هذا الحقل مخصص للمسمى الوظيفي للشخص الموجه إليه الخطاب.
+
+4. subject (الموضوع):
+   - موضوع الخطاب. قد يبدأ بكلمة "الموضوع:" أو "بشأن:"، ولكن إذا لم توجد هذه الكلمات، فابحث عن الجملة القصيرة التلخيصية التي تأتي عادة قبل بداية نص الخطاب (مثل "طلب الموافقة على..." أو "بخصوص..."). 
+   - استنتج الموضوع من سياق الخطاب إذا لم يكن مكتوباً بشكل صريح! يجب ألا يكون فارغاً أبداً.
+
+5. sender (المرسل):
+   - المسمى الوظيفي الأساسي للمرسل (مثلاً: "مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC)").
+   - لا تضمن الأسماء الشخصية.
+
+6. full_body (نص الخطاب الرئيسي):
+   - النص الرئيسي فقط، بدون الترويسة وبدون التوقيعات.
+
+قواعد صارمة:
+- أعد الناتج بتنسيق JSON فقط.
+- المفاتيح يجب أن تكون: "sender", "recipient", "subject", "holder_name", "position", "full_body".
+
+مثال للإخراج المطلوب:
+```json
+{
+  "recipient": "مكتب السيد الأستاذ الدكتور / رئيس الجامعة",
+  "holder_name": "السيد الأستاذ الدكتور / السعيد عبدالهادي الموقر",
+  "position": "رئيس الجامعة",
+  "subject": "طلب الموافقة على تجديد ترخيص البرامج",
+  "sender": "مدير مركز الخدمات الإلكترونية",
+  "full_body": "نتشرف بعرض الآتي على سيادتكم..."
+}
+```
+"""
 
 
 # ─── Text cleanup ─────────────────────────────────────────────────────────────
@@ -207,6 +245,28 @@ def _is_rate_limit_error(e: Exception) -> bool:
 
 
 # ─── Main generation function ─────────────────────────────────────────────────
+def get_system_prompt(doc_type: str, num_tables: int = 0, num_images: int = 0) -> str:
+    attachment_instruction = ""
+    if num_tables > 0 or num_images > 0:
+        parts = []
+        if num_tables > 0:
+            parts.append(f"{num_tables} جداول")
+        if num_images > 0:
+            parts.append(f"{num_images} صور")
+        
+        tags = []
+        for i in range(1, num_tables + 1):
+            tags.append(f"{{{{TABLE_{i}}}}}")
+        for i in range(1, num_images + 1):
+            tags.append(f"{{{{IMAGE_{i}}}}}")
+            
+        attachment_instruction = f"ملاحظة هامة: المستخدم قام بإرفاق {' و'.join(parts)}. يجب عليك وضع العلامات التالية ({', '.join(tags)}) في الأماكن المناسبة داخل النص المُصاغ ليتم إدراج الجداول والصور مكانها تلقائياً."
+
+    if doc_type == "letter":
+        return LETTER_SYSTEM.format(attachment_instruction=attachment_instruction)
+    return REQUEST_SYSTEM.format(attachment_instruction=attachment_instruction)
+
+
 def generate_arabic_text(
     doc_type: str,
     sender: str,
@@ -214,12 +274,14 @@ def generate_arabic_text(
     subject: str,
     raw_draft: str,
     user_email: str = "",
+    num_tables: int = 0,
+    num_images: int = 0,
 ) -> dict:
     """
     Generate formal Arabic letter/request body text using cloud AI providers.
     Tries Gemini → Groq → DeepSeek, failing over on rate-limit errors.
     """
-    system_prompt = LETTER_SYSTEM if doc_type == "letter" else REQUEST_SYSTEM
+    system_prompt = get_system_prompt(doc_type, num_tables, num_images)
     type_label = "خطاب رسمي" if doc_type == "letter" else "طلب رسمي"
     recipient_ar = normalize_recipient(recipient)
 
@@ -232,7 +294,7 @@ def generate_arabic_text(
 المسودة / الفكرة الرئيسية:
 {raw_draft}
 
-اكتب {type_label} كاملاً يغطي الفقرات الخمس المطلوبة بالتفصيل.
+اكتب {type_label} بشكل مباشر ومختصر وفقاً للتعليمات.
 تذكر وضع النص النهائي بين <text> و </text> ولا تكتب أي كلمة أخرى خارجها."""
 
     # Load user API keys
@@ -255,8 +317,6 @@ def generate_arabic_text(
             logger.info(f"Trying provider: {name}")
             raw = caller(api_key, system_prompt, user_message)
             text = _clean_output(raw)
-            if len(text.split()) < 30:
-                raise ValueError(f"Output too short ({len(text.split())} words)")
             return {"success": True, "text": text, "model": name}
         except Exception as e:
             tried.append(name)
@@ -281,6 +341,62 @@ def generate_arabic_text(
     }
 
 
+def extract_document_fields(raw_text: str, user_email: str = "") -> dict:
+    """
+    Extract specific fields from a raw document text using cloud AI providers.
+    Tries Gemini → Groq → DeepSeek, failing over on rate-limit errors.
+    Returns a dictionary of extracted fields, or None if failed.
+    """
+    import json
+    import re
+    
+    user_message = f"""استخرج الحقول المطلوبة من النص التالي وأعدها كـ JSON فقط بدون أي إضافات:
+    
+{raw_text}"""
+
+    keys = get_user_keys(user_email) if user_email else {}
+
+    PROVIDERS = [
+        ("Gemini",   keys.get("gemini", ""),   _call_gemini),
+        ("Groq",     keys.get("groq", ""),     _call_groq),
+        ("DeepSeek", keys.get("deepseek", ""), _call_deepseek),
+    ]
+
+    for name, api_key, caller in PROVIDERS:
+        if not api_key:
+            continue
+        try:
+            logger.info(f"Trying provider for extraction: {name}")
+            raw = caller(api_key, EXTRACTION_SYSTEM, user_message)
+            
+            text = raw.strip()
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+            
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                text = match.group(0)
+                
+            parsed = json.loads(text)
+            
+            expected_keys = ["sender", "recipient", "subject", "holder_name", "position", "full_body"]
+            result = {}
+            for k in expected_keys:
+                result[k] = parsed.get(k, "")
+            
+            return result
+        except Exception as e:
+            logger.warning(f"Extraction failed with {name}: {e}")
+            continue
+
+    return None
+
+
 def get_available_models() -> list:
     return ["Gemini 3.5 Flash", "Groq LLaMA-3.3-70B", "DeepSeek Chat"]
 
@@ -289,3 +405,47 @@ def build_full_document_text(generated_body: str) -> str:
     text = generated_body.strip()
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text
+FORMAT_SYSTEM = """أنت محرر مراسلات رسمية ذكي.
+مهمتك: تنسيق وضبط النص الإداري المقدم إليك ليكون جاهزاً للطباعة والاعتماد.
+سيتم تزويدك بالنص الأساسي للخطاب، ومعلومات حول وجود "مرفقات" (جداول أو صور) سيتم إدراجها.
+
+القواعد:
+1. حافظ على محتوى النص والمعنى بالكامل ولكن أعد تنسيق الفقرات لتكون أكثر احترافية.
+2. إذا تم إخبارك بوجود "جدول"، يجب عليك إدراج العلامة {{TABLE_1}} في المكان الأنسب داخل النص (عادةً بعد مقدمة تشير إلى بيانات أو إحصائيات، أو في منتصف الخطاب).
+3. إذا تم إخبارك بوجود "صور"، يجب عليك إدراج العلامة {{IMAGE_1}} في المكان الأنسب داخل النص (عادةً بعد الإشارة لمرفق مصور، أو في نهاية النص قبل الختام).
+4. أعد فقط النص المنسق بالكامل، جاهزاً للنسخ، دون أي تعليقات خارجية. لا تضف التوقيعات أو ترويسة الخطاب.
+"""
+
+def format_document_with_ai(full_body: str, has_table: bool, has_images: bool, user_email: str) -> dict:
+    import json
+    
+    keys = get_user_keys(user_email) if user_email else {}
+    
+    providers = [
+        ("Gemini 3.5 Flash", _call_gemini, keys.get("gemini")),
+        ("Groq LLaMA-3.3-70B", _call_groq, keys.get("groq")),
+        ("DeepSeek Chat", _call_deepseek, keys.get("deepseek"))
+    ]
+    
+    attachments_info = []
+    if has_table:
+        attachments_info.append("ملاحظة: المستخدم سيقوم بإرفاق (جدول). الرجاء إدراج {{TABLE_1}} في المكان المناسب.")
+    if has_images:
+        attachments_info.append("ملاحظة: المستخدم سيقوم بإرفاق (صور). الرجاء إدراج {{IMAGE_1}} في المكان المناسب.")
+        
+    user_message = "النص المراد تنسيقه:\n" + full_body
+    if attachments_info:
+        user_message += "\n\n" + "\n".join(attachments_info)
+
+    for name, caller, api_key in providers:
+        if not api_key:
+            continue
+        try:
+            logger.info(f"Trying provider for formatting: {name}")
+            raw = caller(api_key, FORMAT_SYSTEM, user_message)
+            return {"success": True, "text": _clean_output(raw), "model": name}
+        except Exception as e:
+            logger.warning(f"Formatting failed with {name}: {e}")
+            continue
+
+    return {"success": False, "error": "All configured AI providers failed or no API keys are set."}

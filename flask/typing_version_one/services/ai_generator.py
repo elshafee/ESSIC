@@ -121,7 +121,7 @@ def build_full_document_text(
     recipient: str,
     subject: str,
     generated_body: str,
-    signatory: str = "مدير مركز الخدمات الإلكترونية والإبداع العلمي (ESSIC) ورئيس قسم الهندسة الطبية الحيوية – كلية الهندسة\nالأستاذ(م) الدكتور/ محمد كمال عبد السلام",
+    signatory: str = "مدير مركز الخدمات الإلكترونية – كلية الهندسة\nالأستاذ(م) الدكتور/ محمد كمال عبد السلام",
 ) -> str:
     """
     Assembles the complete formal document text that goes into {{BODY_TEXT}}.

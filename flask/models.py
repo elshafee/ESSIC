@@ -51,6 +51,7 @@ class Document(db.Model):
     status           = db.Column(db.String(50), default='pending')    # pending, approved
     doc_type         = db.Column(db.String(20), nullable=True)        # "letter" or "request"
     sender           = db.Column(db.Text, nullable=True)
+    sender_position  = db.Column(db.Text, nullable=True)
     recipient        = db.Column(db.Text, nullable=True)
     subject          = db.Column(db.Text, nullable=True)
     holder_name      = db.Column(db.Text, nullable=True)
@@ -60,7 +61,25 @@ class Document(db.Model):
     raw_draft        = db.Column(db.Text, nullable=True)
     generated_body   = db.Column(db.Text, nullable=True)
     ai_model         = db.Column(db.String(100), nullable=True)
+    sharepoint_url   = db.Column(db.Text, nullable=True)              # direct link to file on OneDrive/SharePoint
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
         return f"<Document id={self.id} code={self.full_code}>"
+
+
+class Contact(db.Model):
+    """
+    Represents a contact (sender or recipient) to be used for auto-completing fields.
+    """
+    __tablename__ = "contacts"
+
+    id          = db.Column(db.Integer, primary_key=True)
+    name        = db.Column(db.String(255), nullable=False)
+    type        = db.Column(db.String(50), nullable=True) # e.g. 'sender', 'recipient'
+    holder_name = db.Column(db.String(255), nullable=True)
+    position    = db.Column(db.String(255), nullable=True)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Contact id={self.id} name={self.name}>"
